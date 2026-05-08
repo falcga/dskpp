@@ -4,7 +4,7 @@ import os
 import asyncio
 from urllib.parse import urlparse
 
-from dsk.CloudflareBypasser import CloudflareBypasser
+from CloudflareBypasser import CloudflareBypasser
 from DrissionPage import ChromiumPage, ChromiumOptions
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
