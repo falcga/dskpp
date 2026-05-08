@@ -38,9 +38,11 @@ dsk++ provides:
 
 ### clone repo
 
+> [!CAUTION]
+> Do not cd (change directory) into it, you'll import it like dskpp.api!
+
 ```bash
 git clone https://github.com/fundiman/dskpp
-cd dskpp
 ```
 
 ### install dependencies
@@ -105,7 +107,7 @@ dskpp/
 ### initialize client
 
 ```python
-from dsk.api import DeepSeekAPI
+from dskpp.api import DeepSeekAPI
 import asyncio
 
 api = DeepSeekAPI(auth_token="your_token")
@@ -323,7 +325,7 @@ The system is designed around non-blocking execution:
 The client provides specific exceptions for different failure modes:
 
 ```python
-from dsk.api import (
+from dskpp.api import (
     AuthenticationError,    # Invalid/expired token
     RateLimitError,         # API rate limit exceeded
     NetworkError,           # Network communication failure
@@ -339,7 +341,7 @@ from dsk.api import (
 
 ```python
 import asyncio
-from dsk.api import DeepSeekAPI
+from dskpp.api import DeepSeekAPI
 
 async def main():
     api = DeepSeekAPI("your_token_here")
