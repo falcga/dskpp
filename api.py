@@ -255,15 +255,19 @@ class DeepSeekAPI:
         
         while retry_count < max_retries:
             try:
-                # Read file data
+                from curl_cffi.requests import AsyncSession
+                from curl_cffi import CurlMime
+
                 with open(file_path, "rb") as f:
                     file_data = f.read()
-                
-                # Create multipart form data
+
+                mp = CurlMime()
+                mp.addpart(name="file", data=file_data, filename=Path(file_path).name, content_type="application/octet-stream")
+
                 response = await self.session.post(
                     url,
                     headers=headers,
-                    multipart={'file': (Path(file_path).name, file_data, 'application/octet-stream')},
+                    multipart=mp,
                     cookies=self.cookies,
                     impersonate='chrome120',
                 )
