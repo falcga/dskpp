@@ -260,17 +260,13 @@ class DeepSeekAPI:
                     file_data = f.read()
                 
                 # Create multipart form data
-                files = {'file': (Path(file_path).name, file_data, 'application/octet-stream')}
-                
-                # Await the post request
                 response = await self.session.post(
                     url,
                     headers=headers,
-                    files=files,
+                    multipart={'file': (Path(file_path).name, file_data, 'application/octet-stream')},
                     cookies=self.cookies,
                     impersonate='chrome120',
                 )
-                
                 # text is a property
                 text = response.text
                 
