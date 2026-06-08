@@ -8,3 +8,4 @@ pydantic==2.13.4
 PyVirtualDisplay==3.0
 uvicorn==0.46.0
 wasmtime==42.0.0
+websockets>=12.0

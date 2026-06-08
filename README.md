@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-Apache2.0-lightgrey.svg)
 ![Status](https://img.shields.io/badge/status-experimental-orange.svg)
 
-A lightweight async Python client for interacting with DeepSeek chat infrastructure through a local bypass + cookie + proof-of-work pipeline.
+A lightweight async Python client for interacting with DeepSeek chat infrastructure through a local bypass + cookie + proof-of-work pipeline, with **OpenAI-compatible API server**.
 
 This project follows the same conceptual direction (and also contains elements from) as:
 - [https://github.com/xtekky/deepseek4free](https://github.com/xtekky/deepseek4free)
@@ -21,7 +21,7 @@ This project follows the same conceptual direction (and also contains elements f
 
 ## overview
 
-dsk++ provides:
+dskpp provides:
 
 * async DeepSeek chat client
 * streaming response support with dual format parsing
@@ -31,6 +31,7 @@ dsk++ provides:
 * WASM-based proof-of-work solver with async thread pool
 * concurrent file upload support using asyncio.gather()
 * automatic Cloudflare detection and cookie refresh
+* **OpenAI-compatible API server** for use with AI agents (Cline, LangChain, OpenAI SDK, etc.)
 
 ---
 
@@ -83,26 +84,164 @@ This will:
 
 ---
 
+## OpenAI-compatible API
+
+dskpp can be used as an **OpenAI-compatible API server**, allowing integration with AI agents like **Cline**, **LangChain**, **OpenAI Python SDK**, and others.
+
+### start the server
+
+```bash
+python server.py
+```
+
+### start with authentication
+
+```bash
+export AUTH_KEY=your-secret-key
+python server.py
+```
+
+### environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVER_PORT` | `8021` | Server port |
+| `DOCKERMODE` | `false` | Docker mode flag (headless Chrome) |
+| `AUTH_KEY` | *(empty)* | API key for Bearer auth. If not set, auth is disabled |
+| `MODEL_NAME` | `deepseek-chat` | Default model name |
+
+### API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/models` | List available models |
+| `POST` | `/v1/chat/completions` | Chat completion (streaming + non-streaming) |
+| `GET` | `/health` | Health check |
+| `GET` | `/cookies` | Get Cloudflare bypass cookies (original) |
+| `GET` | `/html` | Get page HTML with cookies (original) |
+
+### authentication
+
+The server supports two authentication methods:
+
+1. **Authorization header** (recommended for AI agents):
+   ```
+   Authorization: Bearer your-secret-key
+   ```
+
+2. **Query parameter**:
+   ```
+   ?key=your-secret-key
+   ```
+
+If `AUTH_KEY` is not set, authentication is disabled and all requests are accepted.
+
+### available models
+
+| Model ID | Description |
+|----------|-------------|
+| `deepseek-chat` | Standard DeepSeek chat model |
+| `deepseek-reasoner` | DeepSeek with reasoning/thinking enabled |
+
+### use with Cline
+
+Configure Cline to use your dskpp server:
+
+```json
+{
+  "apiProvider": "openai",
+  "openAiBaseUrl": "http://localhost:8021/v1",
+  "openAiApiKey": "your-secret-key",
+  "openAiModelId": "deepseek-chat"
+}
+```
+
+### use with OpenAI Python SDK
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8021/v1",
+    api_key="your-secret-key",
+)
+
+response = client.chat.completions.create(
+    model="deepseek-chat",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello!"},
+    ],
+    stream=True,
+)
+
+for chunk in response:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+### use with LangChain
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    base_url="http://localhost:8021/v1",
+    api_key="your-secret-key",
+    model="deepseek-chat",
+)
+
+response = llm.invoke("Hello!")
+print(response.content)
+```
+
+### example: curl
+
+```bash
+# List models
+curl http://localhost:8021/v1/models
+
+# Chat completion (non-streaming)
+curl -X POST http://localhost:8021/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-chat",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+
+# Chat completion (streaming)
+curl -X POST http://localhost:8021/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-chat",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "stream": true
+  }'
+```
+
+---
+
 ## project structure
 
 ```
 dskpp/
 │
 ├── api.py                     # async DeepSeek API client
-├── server.py                 # FastAPI bypass + cookie server
-├── CloudflareBypasser.py     # Chromium-based challenge solver
-├── bypass.py                 # automation helper logic
-├── pow.py                   # WASM proof-of-work solver (async)
-├── run_and_get_cookies.py   # bootstrap cookie acquisition
+├── server.py                  # FastAPI server (bypass + OpenAI-compatible API)
+├── openai_compat.py           # OpenAI API models and helpers
+├── CloudflareBypasser.py      # Chromium-based challenge solver
+├── bypass.py                  # automation helper logic
+├── pow.py                     # WASM proof-of-work solver (async)
+├── run_and_get_cookies.py     # bootstrap cookie acquisition
 │
-├── dsk/                     # runtime cookie storage
-├── wasm/                    # WASM binaries for hashing
+├── dsk/                       # runtime cookie storage
+├── wasm/                      # WASM binaries for hashing
 └── README.md
 ```
 
 ---
 
-## usage
+## usage (Python API client)
 
 ### initialize client
 
@@ -138,19 +277,13 @@ print(result)  # "Successfully deleted session: session_id"
 ### file upload (concurrent multiple files)
 
 ```python
-# Upload multiple files concurrently
 file_ids = await api.upload_files([
     "document.pdf",
     "image.png",
     "data.csv"
 ])
-
-# file_ids returned in same order as input
 print(file_ids)  # ['file_id_1', 'file_id_2', 'file_id_3']
 ```
-
-> [!NOTE]
-> The system uploads all files simultaneously using `asyncio.gather()` for maximum efficiency.
 
 ---
 
@@ -160,16 +293,12 @@ print(file_ids)  # ['file_id_1', 'file_id_2', 'file_id_3']
 async for chunk in api.chat_completion(
     chat_session_id=session_id,
     prompt="Analyze these uploaded files",
-    ref_file_ids=file_ids,  # List of file IDs from upload
+    ref_file_ids=file_ids,
     thinking_enabled=True,
-    search_enabled=False  # Must be False when using files
+    search_enabled=False
 ):
-    # chunk is a dictionary with 'content' key
     print(chunk.get("content", ""), end="")
 ```
-
-> [!WARNING]
-> File uploads require `search_enabled=False`. Attempting to use both will raise `UploadFilesUnavailable`.
 
 ---
 
@@ -180,7 +309,7 @@ async for chunk in api.chat_completion(
     chat_session_id=session_id,
     prompt="What's the latest news about AI?",
     thinking_enabled=True,
-    search_enabled=True  # Enables web search for current info
+    search_enabled=True
 ):
     print(chunk.get("content", ""), end="")
 ```
@@ -193,24 +322,18 @@ The client parses DeepSeek's SSE format and returns dictionaries:
 
 ```python
 {
-    'type': 'text',           # Type of chunk (text, message_ids, etc.)
-    'content': 'incremental text...',  # The actual content
+    'type': 'text',
+    'content': 'incremental text...',
     'finish_reason': None     # 'stop' when complete, None otherwise
 }
 ```
-
-> [!NOTE]
-> The parser automatically handles both full format (with 'p' and 'o' fields) and simplified format (just 'v' field) chunks.
 
 ---
 
 ### non-streaming usage (aggregated)
 
-A fully buffered response can be constructed manually:
-
 ```python
 response = ""
-
 async for chunk in api.chat_completion(
     chat_session_id=session_id,
     prompt="Hello world"
@@ -220,21 +343,10 @@ async for chunk in api.chat_completion(
 
 ---
 
-### conversation history
-
-```python
-history = await api.get_history(session_id)
-print(history)
-```
-
----
-
 ### cleanup
 
-> [!IMPORTANT]
-> Always close the session when done to free resources:
-
 ```python
+await api.delete_chat_session(session)
 await api.close()
 ```
 
@@ -292,15 +404,24 @@ Async client for session-based chat interaction with:
 - automatic retry logic with Cloudflare detection and cookie refresh
 - async session management with curl_cffi
 
-### 2. bypass layer (`server.py`)
+### 2. Server layer (`server.py`)
 
-FastAPI + Chromium automation for:
+FastAPI server providing:
+- OpenAI-compatible REST API (`/v1/models`, `/v1/chat/completions`)
+- WebSocket proxy to upstream DeepSeek API
+- Bearer token authentication
+- Cloudflare bypass via Chromium automation
+- cookie extraction and validation
 
-* Cloudflare bypass
-* cookie extraction
-* page validation
+### 3. OpenAI compatibility layer (`openai_compat.py`)
 
-### 3. PoW layer (`pow.py`)
+Pydantic models and helpers for:
+- OpenAI request/response format conversion
+- Messages array to prompt string conversion
+- Model name mapping to DeepSeek parameters
+- SSE streaming chunk formatting
+
+### 4. PoW layer (`pow.py`)
 
 WebAssembly-based solver with async wrapper using asyncio.to_thread() to keep event loop responsive during CPU-bound computations.
 
@@ -316,7 +437,6 @@ The system is designed around non-blocking execution:
 * browser automation runs in separate processes
 * cookie acquisition runs outside event loop control path
 * concurrent file uploads using asyncio.gather()
-* colored warning outputs for better visibility
 
 ---
 
@@ -333,44 +453,6 @@ from dskpp.api import (
     UploadFilesUnavailable, # Search enabled during file upload
     APIError               # Generic API error with status code
 )
-```
-
----
-
-## example: full flow with file upload
-
-```python
-import asyncio
-from dskpp.api import DeepSeekAPI
-
-async def main():
-    api = DeepSeekAPI("your_token_here")
-
-    # Create session
-    session = await api.create_chat_session()
-    print(f"Session created: {session}")
-
-    # Upload files concurrently
-    file_ids = await api.upload_files([
-        "report.pdf",
-        "data.xlsx"
-    ])
-    print(f"Uploaded files: {file_ids}")
-
-    # Chat with file context
-    async for chunk in api.chat_completion(
-        session,
-        "Analyze these files and summarize key points",
-        ref_file_ids=file_ids,
-        search_enabled=False  # Required for file uploads
-    ):
-        print(chunk.get("content", ""), end="")
-
-    # Cleanup
-    await api.delete_chat_session(session)
-    await api.close()
-
-asyncio.run(main())
 ```
 
 ---
